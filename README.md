@@ -30,7 +30,7 @@
 
 ├── README.md
 ├── requirements.txt
-├── main_pipeline.ipynb           # Master Jupyter notebook: runs each step, demos project
+├── main_pipeline.ipynb           # Master Jupyter notebook: runs each step, 
 ├── config.py                     # Central config (params, file paths, etc)
 ├── audio_io/
 │   ├── __init__.py
