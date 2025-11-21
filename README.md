@@ -26,45 +26,45 @@
 
 -----
 
-/sing-me-a-song/
-
-├── README.md
-├── requirements.txt
-├── main_pipeline.ipynb           # Master Jupyter notebook: runs each step, 
-├── config.py                     # Central config (params, file paths, etc)
-├── audio_io/
-│   ├── __init__.py
-│   ├── load_audio.py             # Load, downsample, normalize audio files
-│   └── save_audio.py             # Write reconstructed audio to WAV
-├── cochlea/
-│   ├── __init__.py
-│   ├── filterbank.py             # Gammatone/Butterworth filterbank functions
-│   └── envelope_extract.py       # Envelope, phase extraction from filtered signals
-├── haircell/
-│   ├── __init__.py
-│   └── transduction.py           # Nonlinear hair cell transformation routines
-├── neuron_models/
-│   ├── __init__.py
-│   ├── lif_neuron.py             # Leaky Integrate & Fire neuron implementation
-│   ├── hh_neuron.py              # Hodgkin-Huxley neuron implementation
-│   └── neuron_population.py      # Simulation and population management
-├── visualization/
-│   ├── __init__.py
-│   ├── spectrograms.py           # Input and filtered spectrogram visualizer
-│   ├── cochlear_response.py      # Plots of filterbank output
-│   └── spike_raster.py           # Raster plots of neuronal output
-│   └── neurogram.py              # Heatmap of firing rates
-├── reconstruction/
-│   ├── __init__.py
-│   ├── decode_spikes.py          # Spike-based envelope decoding, synthesis
-│   └── vocoder.py                # Recombine/envelope-sum for final audio
-├── tests/
-│   ├── test_io.py
-│   ├── test_cochlea.py
-│   ├── test_haircell.py
-│   ├── test_neurons.py
-│   ├── test_visualization.py
-│   └── test_reconstruction.py
-└── sound_db/
-    ├── example_voice.wav
-    └── ...
+/sing-me-a-song/  
+  
+├── README.md  
+├── requirements.txt  
+├── main_pipeline.ipynb           # Master Jupyter notebook: runs each step,  
+├── config.py                     # Central config (params, file paths, etc)  
+├── audio_io/  
+│   ├── __init__.py  
+│   ├── load_audio.py             # Load, downsample, normalize audio files  
+│   └── save_audio.py             # Write reconstructed audio to WAV  
+├── cochlea/  
+│   ├── __init__.py  
+│   ├── filterbank.py             # Gammatone/Butterworth filterbank functions  
+│   └── envelope_extract.py       # Envelope, phase extraction from filtered signals  
+├── haircell/  
+│   ├── __init__.py  
+│   └── transduction.py           # Nonlinear hair cell transformation routines  
+├── neuron_models/  
+│   ├── __init__.py  
+│   ├── lif_neuron.py             # Leaky Integrate & Fire neuron implementation  
+│   ├── hh_neuron.py              # Hodgkin-Huxley neuron implementation  
+│   └── neuron_population.py      # Simulation and population management  
+├── visualization/  
+│   ├── __init__.py  
+│   ├── spectrograms.py           # Input and filtered spectrogram visualizer  
+│   ├── cochlear_response.py      # Plots of filterbank output  
+│   └── spike_raster.py           # Raster plots of neuronal output  
+│   └── neurogram.py              # Heatmap of firing rates  
+├── reconstruction/  
+│   ├── __init__.py  
+│   ├── decode_spikes.py          # Spike-based envelope decoding, synthesis  
+│   └── vocoder.py                # Recombine/envelope-sum for final audio  
+├── tests/  
+│   ├── test_io.py  
+│   ├── test_cochlea.py  
+│   ├── test_haircell.py  
+│   ├── test_neurons.py  
+│   ├── test_visualization.py  
+│   └── test_reconstruction.py  
+└── sound_db/  
+    ├── example_voice.wav  
+    └── ...  
