@@ -1,7 +1,7 @@
 """
 recover.py -- end-to-end auditory reconstruction driver.
 
-Runs one input clip through six reconstruction paths and measures how faithfully
+Runs one input clip through seven reconstruction paths and measures how faithfully
 each recovers the original waveform:
 
   PATH T  Transparent STFT             magnitude + phase; reference ceiling.
@@ -13,6 +13,9 @@ each recovers the original waveform:
   PATH C+ Rate code + borrowed TFS     diagnostic only; carrier is not from spikes.
   PATH N  Neural spike-timing code     band signal -> deterministic LIF spike times
                                        -> least-squares decode. Spikes only.
+  PATH H  The whole ear                cochlea -> hair cells (rectify, compress,
+                                       adapt) -> ~32,000 fibers -> spike times, then
+                                       every stage inverted in turn. Spikes only.
 
 The A->B gap = information carried by temporal fine structure.
 The B->C gap = information lost in the stochastic spike rate-code.
@@ -39,8 +42,10 @@ from reconstruction.decode_spikes import envelope_expansion
 from cochlea.gammatone_frame import gammatone_frame, analyze, synthesize
 from neuron_models.spike_timing import make_population, encode_spike_times
 from reconstruction.decode_spike_times import decode_spike_times
+from auditory_periphery import hear, regenerate
 
 PATH_N_NAME = 'pathN_spike_timing'
+PATH_H_NAME = 'pathH_full_ear'
 
 
 # --------------------------------------------------------------------------- #
@@ -138,6 +143,8 @@ def main():
                     help='gammatone frame channels for paths A and N')
     ap.add_argument('--timing-neurons', type=int, default=16,
                     help='neurons per channel for path N')
+    ap.add_argument('--fibers', type=int, default=1024,
+                    help='nerve fibers per channel for path H')
     ap.add_argument('--jitter', type=float, default=0.0,
                     help='spike-time jitter std in seconds for path N (0 = exact)')
     args = ap.parse_args()
@@ -232,6 +239,20 @@ def main():
     print(f"  {info['measurements']} equations for {len(x64)} samples "
           f"({info['oversampling']:.1f}x), {info['iterations']} LSQR iterations")
 
+    # =======================================================================
+    # PATH H -- the whole ear: cochlea -> hair cells -> nerve, then each inverted
+    # =======================================================================
+    print(f"Path H: cochlea -> hair cells -> {args.timing_channels * args.fibers} "
+          "nerve fibers -> spike times ...")
+    h_neuron, h_time, ear = hear(x64, fs, num_channels=args.timing_channels,
+                                 fibers_per_channel=args.fibers)
+    print(f"  {len(h_time)} spikes, mean rate "
+          f"{len(h_time) / (args.timing_channels * args.fibers * ear['padded_samples'] / fs):.1f}"
+          " Hz/fiber; inverting nerve, hair cells, cochlea ...")
+    y_h, h_info = regenerate(h_neuron, h_time, ear)
+    print(f"  {h_info['oversampling']:.1f} spike intervals per sample per channel, "
+          f"{h_info['unobserved_samples']} unobserved samples")
+
     # --- Save + score -------------------------------------------------------
     config.ensure_output_dir()
     outputs = {
@@ -242,6 +263,7 @@ def main():
         'pathC_neural_spikes': y_c,
         'pathC+_neural_tfs': y_cp,
         PATH_N_NAME: y_n,
+        PATH_H_NAME: y_h,
     }
     def listenable(sig, level=0.95):
         """Peak-normalize for a healthy, consistent playback volume."""
@@ -260,6 +282,7 @@ def main():
         report_row('C  neural spikes', x, y_c, fs),
         report_row('C+ neural + TFS carrier', x, y_cp, fs),
         report_row('N  spike timing code', x, y_n, fs),
+        report_row('H  full ear (hair cells)', x, y_h, fs),
     ]
 
     print("\n" + "=" * 74)
@@ -279,6 +302,8 @@ def main():
     print("  C+          -> diagnostic: its carrier is borrowed, not decoded from spikes.")
     print("  N ~ perfect -> exact spike TIMES carry the whole waveform; rerun with")
     print("                 --jitter 1e-5 to see how timing noise erodes it.")
+    print("  H ~ perfect -> still true behind compressing, rectifying, adapting hair")
+    print("                 cells, given about as many fibers as a human nerve.")
 
 
 if __name__ == '__main__':

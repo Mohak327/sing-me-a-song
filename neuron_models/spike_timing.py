@@ -13,12 +13,13 @@ import numpy as np
 
 
 def make_population(center_freqs, neurons_per_channel=16, tau=0.010, base_gain=5.0,
-                    bias_range=(1.2, 3.0), seed=0):
+                    bias_range=(1.2, 3.0), seed=0, frequency_gain=True):
     """
     Create the fixed parameters of the neuron population.
 
-    Gain grows with center frequency as sqrt(1 + (2*pi*fc*tau)^2), cancelling the
-    membrane low-pass so every channel is measured equally well.
+    With frequency_gain, gain grows with center frequency as
+    sqrt(1 + (2*pi*fc*tau)^2), cancelling the membrane low-pass so every channel is
+    measured equally well. Without it every neuron uses base_gain.
 
     Args:
         center_freqs (np.ndarray): Channel center frequencies (Hz)
@@ -28,6 +29,7 @@ def make_population(center_freqs, neurons_per_channel=16, tau=0.010, base_gain=5
         bias_range (tuple): (low, high) constant drive; must exceed the threshold
             so every neuron fires spontaneously
         seed (int): Seed for per-neuron bias and initial voltage
+        frequency_gain (bool): Scale gain with center frequency
 
     Returns:
         population (dict): 'channel', 'bias', 'gain', 'v0' arrays of length
@@ -37,6 +39,8 @@ def make_population(center_freqs, neurons_per_channel=16, tau=0.010, base_gain=5
     num_channels = len(center_freqs)
     total = num_channels * neurons_per_channel
     lowpass = np.sqrt(1 + (2 * np.pi * np.asarray(center_freqs) * tau) ** 2)
+    if not frequency_gain:
+        lowpass = np.ones(num_channels)
     return {
         'channel': np.repeat(np.arange(num_channels), neurons_per_channel),
         'bias': rng.uniform(bias_range[0], bias_range[1], total),

@@ -8,7 +8,7 @@ Run it:
 
     .\.venv\Scripts\python.exe recover.py [sound_file] [--seconds N]
 
-`recover.py` pushes one clip through six reconstruction paths and scores each
+`recover.py` pushes one clip through seven reconstruction paths and scores each
 against the original (SNR, waveform correlation, envelope correlation, log
 spectral distance). Audio for every path is written to `output/`.
 
@@ -19,14 +19,30 @@ spectral distance). Audio for every path is written to `output/`.
 | B | band envelopes only, noise carrier | cochlear-implant quality |
 | C | spike firing rates -> envelopes | below B |
 | C+ | C with fine structure borrowed from analysis | diagnostic only |
-| N | exact spike times of a deterministic LIF population | perfect |
+| N | exact spike times of 512 deterministic LIF neurons, no hair cells | perfect |
+| H | the whole ear: cochlea, hair cells, 32,768 nerve fibers | perfect |
 
-Path N is exact only for noise-free spike times. `--jitter 1e-5` adds 10
-microseconds of timing noise and shows how quickly fidelity falls.
+Path H is the full model. `auditory_periphery.hear()` turns sound into spike
+times through a gammatone cochlea, inner hair cells (soft half-wave
+rectification, logarithmic compression, adaptation) and a population of leaky
+integrate-and-fire nerve fibers. `regenerate()` gets only the spike times and
+inverts each stage in turn: nerve, hair cells, cochlea.
 
-Modules: `cochlea/gammatone_frame.py` (invertible filterbank),
+    from auditory_periphery import hear, regenerate
+    spike_neuron, spike_time, ear = hear(audio, fs)
+    audio_again, info = regenerate(spike_neuron, spike_time, ear)
+
+Both N and H are exact only for noise-free spike times and deterministic
+fibers. `--jitter 1e-5` adds 10 microseconds of timing noise to path N and shows
+how quickly fidelity falls. Path H needs several spike intervals per audio
+sample in every channel, which is why it uses about as many fibers as a human
+auditory nerve.
+
+Modules: `auditory_periphery.py` (the ear as one invertible system),
+`cochlea/gammatone_frame.py` (invertible filterbank),
+`haircell/inner_hair_cell.py` (invertible hair cell stage),
 `neuron_models/spike_timing.py` (spike-time encoder),
-`reconstruction/decode_spike_times.py` (least-squares decoder). The older
+`reconstruction/decode_spike_times.py` (decoders). The older
 envelope/rate pipeline lives in `cochlea/filterbank.py`, `haircell/`,
 `neuron_models/neuron_population.py` and `reconstruction/vocoder.py`.
 

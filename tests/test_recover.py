@@ -141,6 +141,15 @@ def test_spike_timing_path_is_scored_as_near_perfect():
     assert recover.PATH_N_NAME == 'pathN_spike_timing'
 
 
+def test_full_ear_path_is_scored_as_near_perfect():
+    """Path H (cochlea + hair cells + nerve) must beat 100 dB under recover.py's SNR metric."""
+    x, fs = _make_signal(dur=0.1)
+    spike_neuron, spike_time, ear = recover.hear(x, fs, num_channels=8, fibers_per_channel=1024)
+    y_h, _ = recover.regenerate(spike_neuron, spike_time, ear)
+    assert recover.snr_db(x, y_h) > 100
+    assert recover.PATH_H_NAME == 'pathH_full_ear'
+
+
 if __name__ == "__main__":
     for fn in [test_load_audio_silence_no_nan,
                test_vectorized_lif_respects_refractory,

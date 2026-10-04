@@ -85,3 +85,32 @@ def test_jitter_degrades_gracefully():
         y, _ = decode_spike_times(neuron, time, len(x), fs, H, pop)
     assert np.all(np.isfinite(y))
     assert 3 < _snr_db(x, y) < 80
+
+
+def test_decode_drive_recovers_each_channels_neuron_input():
+    from reconstruction.decode_spike_times import decode_drive
+    fs, n, num_channels = 16000, 2000, 4
+    rng = np.random.default_rng(0)
+    drive = 0.01 * rng.standard_normal((num_channels, n))
+    drive[:, -400:] = 0.0  # quiet tail so the last samples are still followed by spikes
+    pop = make_population(np.linspace(100, 4000, num_channels), neurons_per_channel=1024,
+                          base_gain=20.0, frequency_gain=False)
+    neuron, time = encode_spike_times(drive, fs, pop)
+    decoded, info = decode_drive(neuron, time, n, fs, num_channels, pop)
+    assert decoded.shape == drive.shape
+    assert info['oversampling'] > 4
+    assert _snr_db(drive[:, :-400], decoded[:, :-400]) > 120
+
+
+def test_decode_drive_warns_when_samples_are_unobserved():
+    """A drive strong enough to silence every fiber for a whole sample leaves gaps."""
+    from reconstruction.decode_spike_times import decode_drive
+    fs, n, num_channels = 16000, 2000, 2
+    drive = 0.05 * np.random.default_rng(0).standard_normal((num_channels, n))
+    pop = make_population(np.linspace(100, 4000, num_channels), neurons_per_channel=1024,
+                          base_gain=20.0, frequency_gain=False)
+    neuron, time = encode_spike_times(drive, fs, pop)
+    with pytest.warns(UserWarning, match="unobserved"):
+        decoded, info = decode_drive(neuron, time, n, fs, num_channels, pop)
+    assert info['unobserved_samples'] > 0
+    assert np.all(np.isfinite(decoded))

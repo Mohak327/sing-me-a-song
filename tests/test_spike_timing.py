@@ -73,3 +73,9 @@ def test_encoder_rejects_short_refractory():
     x, fs = _make_signal()
     with pytest.raises(ValueError):
         _encode(x, fs, refractory_period=0.5 / fs)
+
+
+def test_population_can_use_uniform_gain():
+    _, cfs = gammatone_frame(4000, 16000, num_channels=8)
+    pop = make_population(cfs, neurons_per_channel=3, base_gain=20.0, frequency_gain=False)
+    assert np.all(pop['gain'] == 20.0)
