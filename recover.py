@@ -90,6 +90,16 @@ def snr_db(reference, estimate):
     return 10 * np.log10(sig_p / noise_p)
 
 
+def raw_snr_db(reference, estimate):
+    """SNR with no gain fit and no alignment: the estimate must BE the reference."""
+    reference = np.asarray(reference, dtype=np.float64)
+    noise = reference - np.asarray(estimate, dtype=np.float64)
+    noise_p = np.dot(noise, noise)
+    if noise_p <= 0:
+        return float('inf')
+    return 10 * np.log10(np.dot(reference, reference) / noise_p)
+
+
 def waveform_corr(reference, estimate):
     reference, estimate = _align_and_trim(reference, estimate)
     if np.std(reference) == 0 or np.std(estimate) == 0:
@@ -146,7 +156,7 @@ def main():
     ap.add_argument('--fibers', type=int, default=1024,
                     help='nerve fibers per channel for path H')
     ap.add_argument('--jitter', type=float, default=0.0,
-                    help='spike-time jitter std in seconds for path N (0 = exact)')
+                    help='spike-time jitter std in seconds for paths N and H (0 = exact)')
     args = ap.parse_args()
 
     fs = config.TARGET_SAMPLE_RATE
@@ -245,7 +255,7 @@ def main():
     print(f"Path H: cochlea -> hair cells -> {args.timing_channels * args.fibers} "
           "nerve fibers -> spike times ...")
     h_neuron, h_time, ear = hear(x64, fs, num_channels=args.timing_channels,
-                                 fibers_per_channel=args.fibers)
+                                 fibers_per_channel=args.fibers, jitter=args.jitter)
     print(f"  {len(h_time)} spikes, mean rate "
           f"{len(h_time) / (args.timing_channels * args.fibers * ear['padded_samples'] / fs):.1f}"
           " Hz/fiber; inverting nerve, hair cells, cochlea ...")
@@ -293,6 +303,8 @@ def main():
         print(f"{r['path']:<26}{snr:>9}{r['wave_corr']:>9.3f}"
               f"{r['env_corr']:>9.3f}{r['lsd_db']:>10.2f}")
     print("=" * 74)
+    print("Exact check, no gain fit or alignment (raw SNR dB):  "
+          f"A {raw_snr_db(x, y_a):.1f}   N {raw_snr_db(x, y_n):.1f}   H {raw_snr_db(x, y_h):.1f}")
     print(f"Audio written to {config.OUTPUT_PATH}\\  ({len(outputs)} wav files)")
     print("\nInterpretation:")
     print("  T ~ perfect -> keeping magnitude AND phase is losslessly invertible.")

@@ -31,6 +31,7 @@ def test_regenerates_audio_from_spikes_alone():
     x, fs = _make_signal()
     spike_neuron, spike_time, ear = hear(x, fs, num_channels=8, fibers_per_channel=1024)
     y, info = regenerate(spike_neuron, spike_time, ear)
+    assert info['misfit'] < 1e-9, "exact spike times must satisfy the spike equations"
     assert len(y) == len(x)
     assert info['oversampling'] > 4
     assert _snr_db(x, y) > 120, f"got {_snr_db(x, y):.1f} dB"
@@ -57,7 +58,7 @@ def test_too_few_fibers_warns():
     spike_neuron, spike_time, ear = hear(x, fs, num_channels=8, fibers_per_channel=16)
     with pytest.warns(UserWarning, match="under-determined"):
         y, _ = regenerate(spike_neuron, spike_time, ear)
-    assert np.all(np.isfinite(y))
+    assert np.max(np.abs(y)) < 2.0
 
 
 def test_float32_input_is_accepted():
@@ -66,3 +67,82 @@ def test_float32_input_is_accepted():
     spike_neuron, spike_time, ear = hear(x32, fs, num_channels=8, fibers_per_channel=1024)
     y, _ = regenerate(spike_neuron, spike_time, ear)
     assert _snr_db(x32.astype(np.float64), y) > 120
+
+
+def _tone(freq, amplitude, fs=16000, dur=0.1):
+    return amplitude * np.sin(2 * np.pi * freq * np.arange(int(fs * dur)) / fs)
+
+
+def _square(freq, fs=16000, dur=0.1):
+    return np.sign(np.sin(2 * np.pi * freq * np.arange(int(fs * dur)) / fs) + 1e-12)
+
+
+@pytest.mark.parametrize("name,x", [
+    ("1 kHz full scale", _tone(1000, 1.0)),
+    ("1 kHz half scale", _tone(1000, 0.5)),
+    ("100 Hz full scale", _tone(100, 1.0)),
+    ("60 Hz square", _square(60)),
+])
+def test_regenerates_loud_narrowband_sounds(name, x):
+    """Sustained energy in one band must not silence the fibers of that band."""
+    spike_neuron, spike_time, ear = hear(x, 16000, num_channels=8, fibers_per_channel=1024)
+    y, info = regenerate(spike_neuron, spike_time, ear)
+    assert info['unobserved_samples'] == 0, name
+    assert _snr_db(x, y) > 100, f"{name}: {_snr_db(x, y):.1f} dB"
+
+
+def test_regenerates_loud_tone_with_default_channels():
+    x = _tone(1000, 1.0, dur=0.05)
+    spike_neuron, spike_time, ear = hear(x, 16000)
+    y, _ = regenerate(spike_neuron, spike_time, ear)
+    assert _snr_db(x, y) > 100, f"got {_snr_db(x, y):.1f} dB"
+
+
+@pytest.mark.parametrize("fs,fibers", [(8000, 1024), (44100, 3072)])
+def test_regenerates_at_other_sample_rates(fs, fibers):
+    x, _ = _make_signal(fs=fs, dur=0.05)
+    spike_neuron, spike_time, ear = hear(x, fs, num_channels=8, fibers_per_channel=fibers)
+    y, _ = regenerate(spike_neuron, spike_time, ear)
+    assert _snr_db(x, y) > 100, f"fs={fs}: {_snr_db(x, y):.1f} dB"
+
+
+@pytest.mark.parametrize("fibers", [256, 64])
+def test_too_few_fibers_degrades_without_blowing_up(fibers):
+    """Missing information must cost accuracy, never produce huge samples."""
+    x, fs = _make_signal()
+    spike_neuron, spike_time, ear = hear(x, fs, num_channels=8, fibers_per_channel=fibers)
+    with pytest.warns(UserWarning):
+        y, _ = regenerate(spike_neuron, spike_time, ear)
+    assert np.max(np.abs(y)) < 2.0, f"{fibers} fibers: peak {np.max(np.abs(y)):.3g}"
+
+
+def test_spike_time_jitter_degrades_without_blowing_up():
+    x, fs = _make_signal()
+    spike_neuron, spike_time, ear = hear(x, fs, num_channels=8, fibers_per_channel=1024, jitter=1e-5)
+    with pytest.warns(UserWarning, match="inconsistent"):
+        y, info = regenerate(spike_neuron, spike_time, ear)
+    assert info['misfit'] > 1e-6
+    assert np.max(np.abs(y)) <= 1.0
+    assert _snr_db(x, y) < 100, "10 microseconds of jitter cannot leave the result exact"
+
+
+def test_hear_rejects_input_outside_full_scale():
+    x, fs = _make_signal()
+    with pytest.raises(ValueError, match="full scale"):
+        hear(2.0 * x, fs, num_channels=8, fibers_per_channel=16)
+
+
+def test_hear_rejects_stereo_and_non_finite_input():
+    x, fs = _make_signal()
+    with pytest.raises(ValueError, match="mono"):
+        hear(np.stack([x, x]), fs, num_channels=8, fibers_per_channel=16)
+    bad = x.copy()
+    bad[10] = np.nan
+    with pytest.raises(ValueError, match="finite"):
+        hear(bad, fs, num_channels=8, fibers_per_channel=16)
+
+
+def test_hear_rejects_a_tail_too_short_to_follow_the_last_samples():
+    x, fs = _make_signal()
+    with pytest.raises(ValueError, match="tail"):
+        hear(x, fs, num_channels=8, fibers_per_channel=16, tail=0.0)

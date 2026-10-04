@@ -137,8 +137,16 @@ def test_spike_timing_path_is_scored_as_near_perfect():
     population = make_population(cfs, neurons_per_channel=16)
     spike_neuron, spike_time = encode_spike_times(bands, fs, population)
     y_n, _ = decode_spike_times(spike_neuron, spike_time, len(x), fs, H, population)
-    assert recover.snr_db(x, y_n) > 100
+    assert recover.raw_snr_db(x, y_n) > 100
     assert recover.PATH_N_NAME == 'pathN_spike_timing'
+
+
+def test_raw_snr_does_not_forgive_gain_or_delay():
+    """The perfect-regeneration claim is checked with no gain fit and no alignment."""
+    x, _ = _make_signal(dur=0.25)
+    assert recover.raw_snr_db(x, x) > 250
+    assert recover.raw_snr_db(x, 0.3 * x) < 5
+    assert recover.raw_snr_db(x, np.r_[np.zeros(100), x[:-100]]) < 5
 
 
 def test_full_ear_path_is_scored_as_near_perfect():
@@ -146,7 +154,7 @@ def test_full_ear_path_is_scored_as_near_perfect():
     x, fs = _make_signal(dur=0.1)
     spike_neuron, spike_time, ear = recover.hear(x, fs, num_channels=8, fibers_per_channel=1024)
     y_h, _ = recover.regenerate(spike_neuron, spike_time, ear)
-    assert recover.snr_db(x, y_h) > 100
+    assert recover.raw_snr_db(x, y_h) > 100
     assert recover.PATH_H_NAME == 'pathH_full_ear'
 
 

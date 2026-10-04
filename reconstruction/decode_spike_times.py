@@ -10,7 +10,7 @@ of all neurons and solving them by least squares recovers the waveform.
 import warnings
 import numpy as np
 from scipy.signal import lfilter
-from scipy.sparse import csr_matrix, identity
+from scipy.sparse import csr_matrix, diags
 from scipy.sparse.linalg import LinearOperator, lsqr, spsolve
 
 from cochlea.gammatone_frame import analyze, synthesize
@@ -63,7 +63,8 @@ def decode_drive(spike_neuron, spike_time, n, fs, num_channels, population,
     Returns:
         drive (np.ndarray): Shape (num_channels, n)
         info (dict): 'measurements', 'oversampling' (mean intervals per sample per
-            channel), 'unobserved_samples'
+            channel), 'unobserved_samples', 'misfit' (worst relative residual of
+            the spike equations; below 1e-8 when spike times are exact)
     """
     dt = 1.0 / fs
     alpha = np.exp(-dt / population['tau'])
@@ -80,9 +81,18 @@ def decode_drive(spike_neuron, spike_time, n, fs, num_channels, population,
         c1 = (1 - e) / (1 - alpha)
         return i, e - alpha * c1, c1
 
+    # Smoothness prior on the drive, weighted far below the data. It only decides
+    # what data cannot: where no fiber observed a sample, the drive is interpolated
+    # from its neighbours instead of collapsing to an arbitrary value.
+    to_drive = diags([np.full(n, 1 / (1 - alpha)), np.full(n - 1, -alpha / (1 - alpha))],
+                     [0, -1], format='csr')
+    roughness = (diags([-np.ones(n - 1), np.ones(n - 1)], [0, 1], shape=(n - 1, n)) @ to_drive)
+    prior = 1e-15 * (roughness.T @ roughness)
+
     drive = np.zeros((num_channels, n))
     starved = 0
     unobserved = 0
+    misfit = 0.0
     for k in range(num_channels):
         sel = channel == k
         m = int(np.sum(sel))
@@ -101,16 +111,23 @@ def decode_drive(spike_neuron, spike_time, n, fs, num_channels, population,
         touched = np.bincount(cols, minlength=n + 1) > 0
         unobserved += int(np.sum(~touched[1:int(np.max(i_b)) + 1]))
         system = csr_matrix((vals, (rows, cols)), shape=(m, n + 1))[:, 1:]  # E[0] = 0
-        normal = (system.T @ system + 1e-14 * identity(n)).tocsc()
-        leaky = np.r_[0.0, spsolve(normal, system.T @ rhs[sel])]
+        normal = (system.T @ system + prior).tocsc()
+        solution = spsolve(normal, system.T @ rhs[sel])
+        misfit = max(misfit, float(np.linalg.norm(system @ solution - rhs[sel])
+                                   / (np.linalg.norm(rhs[sel]) + 1e-300)))
+        leaky = np.r_[0.0, solution]
         drive[k] = (leaky[1:] - alpha * leaky[:-1]) / (1 - alpha)
     if starved:
         warnings.warn(f"{starved} of {num_channels} channels have fewer spike intervals "
                       "than samples; reconstruction is under-determined")
     info['unobserved_samples'] = unobserved
+    info['misfit'] = misfit
+    if misfit > 1e-6:
+        warnings.warn(f"spike times are inconsistent with noise-free fibers (relative misfit "
+                      f"{misfit:.1e}); the reconstruction is approximate")
     if unobserved:
         warnings.warn(f"{unobserved} samples were unobserved (no fiber spiked or left its "
-                      "refractory period near them); they cannot be recovered exactly")
+                      "refractory period near them); they were interpolated, not recovered")
     return drive, info
 
 

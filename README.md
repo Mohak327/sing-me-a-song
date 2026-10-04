@@ -33,10 +33,19 @@ inverts each stage in turn: nerve, hair cells, cochlea.
     audio_again, info = regenerate(spike_neuron, spike_time, ear)
 
 Both N and H are exact only for noise-free spike times and deterministic
-fibers. `--jitter 1e-5` adds 10 microseconds of timing noise to path N and shows
-how quickly fidelity falls. Path H needs several spike intervals per audio
-sample in every channel, which is why it uses about as many fibers as a human
-auditory nerve.
+fibers. `--jitter 1e-9` adds one nanosecond of timing noise to both and shows how
+quickly fidelity falls; path H is the more fragile (about 73 dB at 1 ns, 32 dB at
+100 ns, nothing useful at 10 microseconds on a short test signal). When spike
+times do not fit noise-free fibers, `regenerate()` warns and reports the misfit.
+
+Path H needs several spike intervals per audio sample in every channel: 512
+fibers per channel still gave 202 dB on a test signal, 256 gave 44 dB, and fewer
+degrade further with a warning. Audio passed to `hear()` must be mono and within
+[-1, 1]. The sample rate sets how many fibers are needed; at 44.1 kHz use about
+3,000 per channel.
+
+`recover.py` prints two scores for the exact paths: the table's SNR, which fits a
+gain and a delay first, and a raw SNR with no fitting at all.
 
 Modules: `auditory_periphery.py` (the ear as one invertible system),
 `cochlea/gammatone_frame.py` (invertible filterbank),

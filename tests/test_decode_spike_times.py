@@ -113,4 +113,4 @@ def test_decode_drive_warns_when_samples_are_unobserved():
     with pytest.warns(UserWarning, match="unobserved"):
         decoded, info = decode_drive(neuron, time, n, fs, num_channels, pop)
     assert info['unobserved_samples'] > 0
-    assert np.all(np.isfinite(decoded))
+    assert np.max(np.abs(decoded)) < 3 * np.max(np.abs(drive)), "gaps must be filled smoothly"
