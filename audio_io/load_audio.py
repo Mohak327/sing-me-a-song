@@ -14,5 +14,7 @@ def load_audio(file_path, target_sr=16000, normalize=True):
     """
     signal, sr = librosa.load(file_path, sr=target_sr, mono=True)
     if normalize:
-        signal = signal / np.max(np.abs(signal))
+        peak = np.max(np.abs(signal))
+        if peak > 0:  # guard against silent input -> divide-by-zero -> NaN
+            signal = signal / peak
     return signal, sr

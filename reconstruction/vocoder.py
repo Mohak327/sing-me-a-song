@@ -136,6 +136,91 @@ def vocoder_reconstruct(envelopes, center_freqs, fs, method='noise',
     return reconstructed
 
 
+def transparent_reconstruct(x, fs, nperseg=512):
+    """
+    Perfect-reconstruction filterbank (STFT analysis / iSTFT synthesis).
+
+    Each STFT bin is a bandpass channel; its complex value carries BOTH the
+    amplitude envelope (magnitude) AND the temporal fine structure (phase).
+    Keeping both and inverting is exact to numerical precision, so this is the
+    true transparent upper bound: a frequency decomposition discards nothing as
+    long as phase is retained. The distance from here to the envelope-only
+    vocoder (Path B) is exactly the information carried by phase / fine structure.
+
+    Args:
+        x (np.ndarray): Input audio.
+        fs (int): Sampling rate (Hz).
+        nperseg (int): STFT window length.
+
+    Returns:
+        reconstructed_audio (np.ndarray): Near bit-exact reconstruction of x.
+    """
+    from scipy.signal import stft, istft
+    noverlap = nperseg * 3 // 4  # 75% overlap, Hann window -> COLA satisfied
+    _, _, Z = stft(x, fs=fs, nperseg=nperseg, noverlap=noverlap)
+    env = np.abs(Z)              # per-channel envelope
+    phase = np.angle(Z)          # per-channel temporal fine structure
+    Z_rec = env * np.exp(1j * phase)
+    _, y = istft(Z_rec, fs=fs, nperseg=nperseg, noverlap=noverlap)
+    return np.real(y)
+
+
+def coherent_reconstruct(filtered_signals, normalize=True):
+    """
+    Near-perfect reconstruction by summing the analysis filterbank channels.
+
+    Each gammatone channel already contains BOTH the amplitude envelope AND the
+    temporal fine structure (the carrier phase). Summing the bands inverts the
+    analysis filterbank up to its frequency coloration, so this preserves pitch,
+    harmonics and phase. This is the "what the cochlea mechanically encodes"
+    upper bound -- it deliberately bypasses the neural spike code.
+
+    Args:
+        filtered_signals (np.ndarray): Shape (num_channels, time_steps), the raw
+            (real) output of the gammatone filterbank -- NOT the envelopes.
+        normalize (bool): Scale peak to 1.0.
+
+    Returns:
+        reconstructed_audio (np.ndarray): TFS-preserving reconstruction.
+    """
+    reconstructed = np.sum(filtered_signals, axis=0)
+    if normalize:
+        peak = np.max(np.abs(reconstructed))
+        if peak > 0:
+            reconstructed = reconstructed / peak
+    return reconstructed
+
+
+def tfs_vocoder(envelopes, fine_structure, normalize=True, target_rms=None):
+    """
+    Re-modulate preserved temporal fine structure with (possibly decoded) envelopes.
+
+    Unlike the noise/sine vocoders, the carrier here is the real per-channel fine
+    structure recovered at analysis time (filtered_signal / envelope). Driving it
+    with a *decoded* envelope shows how much fidelity returns when only the slow
+    amplitude information has passed through the lossy stage but the fast carrier
+    is retained -- the dividing line between cochlear-implant audio and natural audio.
+
+    Args:
+        envelopes (np.ndarray): Shape (num_channels, time_steps). Drive envelopes.
+        fine_structure (np.ndarray): Shape (num_channels, time_steps). Carrier per channel.
+        normalize (bool): Scale peak to 1.0 before RMS matching.
+        target_rms (float): If given, rescale to this RMS.
+
+    Returns:
+        reconstructed_audio (np.ndarray)
+    """
+    reconstructed = np.sum(envelopes * fine_structure, axis=0)
+    peak = np.max(np.abs(reconstructed))
+    if normalize and peak > 0:
+        reconstructed = reconstructed / peak
+    if target_rms is not None:
+        cur = np.sqrt(np.mean(reconstructed ** 2))
+        if cur > 0:
+            reconstructed = reconstructed * (target_rms / cur)
+    return np.clip(reconstructed, -1.0, 1.0)
+
+
 def simple_sum_reconstruct(envelopes, normalize=True):
     """
     Simple reconstruction by summing all envelope channels.
