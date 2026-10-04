@@ -1,18 +1,22 @@
 """
 recover.py -- end-to-end auditory reconstruction driver.
 
-Runs one input clip through three reconstruction paths and measures how faithfully
+Runs one input clip through six reconstruction paths and measures how faithfully
 each recovers the original waveform:
 
-  PATH A  Coherent (TFS-preserving)   sum the gammatone bands directly.
-                                       Upper bound: what the cochlea MECHANICALLY encodes.
+  PATH T  Transparent STFT             magnitude + phase; reference ceiling.
+  PATH A  Coherent (TFS-preserving)    tight gammatone frame, analysis then synthesis.
+                                       What the cochlea MECHANICALLY encodes.
   PATH B  Envelope + noise vocoder     cochlear-implant style; TFS discarded.
-  PATH C  Neural spike code            full biology: envelopes -> hair cell ->
-                                       LIF spikes -> decoded rate -> vocoder.
-                                       What the AUDITORY NERVE actually transmits.
+  PATH C  Neural rate code             envelopes -> hair cell -> LIF spikes ->
+                                       decoded rate -> vocoder.
+  PATH C+ Rate code + borrowed TFS     diagnostic only; carrier is not from spikes.
+  PATH N  Neural spike-timing code     band signal -> deterministic LIF spike times
+                                       -> least-squares decode. Spikes only.
 
 The A->B gap = information carried by temporal fine structure.
 The B->C gap = information lost in the stochastic spike rate-code.
+The C->N gap = what exact spike timing carries that firing rate does not.
 
 Usage:
     python recover.py [sound_file] [--seconds N] [--channels K] [--neurons M]
@@ -29,9 +33,14 @@ from cochlea.filterbank import apply_filterbank
 from cochlea.envelope_extract import extract_envelopes_from_filterbank
 from haircell.transduction import apply_transduction
 from neuron_models.neuron_population import simulate_population_vectorized
-from reconstruction.vocoder import (transparent_reconstruct, coherent_reconstruct,
-                                    tfs_vocoder, vocoder_reconstruct)
+from reconstruction.vocoder import (transparent_reconstruct, tfs_vocoder,
+                                    vocoder_reconstruct)
 from reconstruction.decode_spikes import envelope_expansion
+from cochlea.gammatone_frame import gammatone_frame, analyze, synthesize
+from neuron_models.spike_timing import make_population, encode_spike_times
+from reconstruction.decode_spike_times import decode_spike_times
+
+PATH_N_NAME = 'pathN_spike_timing'
 
 
 # --------------------------------------------------------------------------- #
@@ -125,6 +134,12 @@ def main():
     ap.add_argument('--neurons', type=int, default=10)
     ap.add_argument('--low', type=float, default=80.0, help='lowest channel freq (Hz)')
     ap.add_argument('--high', type=float, default=7800.0, help='highest channel freq (Hz)')
+    ap.add_argument('--timing-channels', type=int, default=32,
+                    help='gammatone frame channels for paths A and N')
+    ap.add_argument('--timing-neurons', type=int, default=16,
+                    help='neurons per channel for path N')
+    ap.add_argument('--jitter', type=float, default=0.0,
+                    help='spike-time jitter std in seconds for path N (0 = exact)')
     args = ap.parse_args()
 
     fs = config.TARGET_SAMPLE_RATE
@@ -155,20 +170,11 @@ def main():
     # =======================================================================
     # PATH A -- coherent, TFS preserved (cochlear mechanical upper bound)
     # =======================================================================
-    print("Path A: coherent TFS reconstruction ...")
-    y_a_raw = coherent_reconstruct(filtered, normalize=False)
-    # Matched synthesis: the summed filterbank acts as one linear filter h_sum.
-    # Measure it with a centered impulse and invert it (regularized / Wiener),
-    # proving the cochlear front-end is invertible within its passband.
-    delta = np.zeros(len(x)); delta[len(x) // 2] = 1.0
-    imp, _ = apply_filterbank(delta, fs, num_channels=args.channels,
-                              low_freq=args.low, high_freq=args.high)
-    h_sum = np.sum(imp, axis=0)
-    H = np.fft.rfft(np.fft.ifftshift(h_sum))
-    Y = np.fft.rfft(y_a_raw)
-    lam = 1e-3 * np.max(np.abs(H) ** 2)
-    y_a = np.fft.irfft(Y * np.conj(H) / (np.abs(H) ** 2 + lam), n=len(x))
-    y_a = y_a * (orig_rms / (np.sqrt(np.mean(y_a ** 2)) + 1e-12))
+    print(f"Path A: tight gammatone frame, {args.timing_channels} channels ...")
+    x64 = x.astype(np.float64)
+    H, frame_cfs = gammatone_frame(len(x64), fs, num_channels=args.timing_channels)
+    bands = analyze(x64, H)
+    y_a = synthesize(bands, H)
 
     # =======================================================================
     # PATH B -- envelope-only noise vocoder (cochlear-implant percept)
@@ -214,6 +220,18 @@ def main():
     print("Path C+: neural envelope + preserved TFS carrier ...")
     y_cp = tfs_vocoder(decoded_env, fine_structure, normalize=True, target_rms=orig_rms * 0.9)
 
+    # =======================================================================
+    # PATH N -- neural spike-timing code (spikes only, no borrowed carrier)
+    # =======================================================================
+    population = make_population(frame_cfs, neurons_per_channel=args.timing_neurons)
+    print(f"Path N: {len(population['bias'])} deterministic LIF neurons -> spike times ...")
+    spike_neuron, spike_time = encode_spike_times(bands, fs, population, jitter=args.jitter)
+    print(f"  {len(spike_time)} spikes, mean rate "
+          f"{len(spike_time) / (len(population['bias']) * dur):.1f} Hz/neuron; decoding ...")
+    y_n, info = decode_spike_times(spike_neuron, spike_time, len(x64), fs, H, population)
+    print(f"  {info['measurements']} equations for {len(x64)} samples "
+          f"({info['oversampling']:.1f}x), {info['iterations']} LSQR iterations")
+
     # --- Save + score -------------------------------------------------------
     config.ensure_output_dir()
     outputs = {
@@ -223,6 +241,7 @@ def main():
         'pathB_envelope_vocoder': y_b,
         'pathC_neural_spikes': y_c,
         'pathC+_neural_tfs': y_cp,
+        PATH_N_NAME: y_n,
     }
     def listenable(sig, level=0.95):
         """Peak-normalize for a healthy, consistent playback volume."""
@@ -240,6 +259,7 @@ def main():
         report_row('B  envelope vocoder', x, y_b, fs),
         report_row('C  neural spikes', x, y_c, fs),
         report_row('C+ neural + TFS carrier', x, y_cp, fs),
+        report_row('N  spike timing code', x, y_n, fs),
     ]
 
     print("\n" + "=" * 74)
@@ -253,11 +273,12 @@ def main():
     print(f"Audio written to {config.OUTPUT_PATH}\\  ({len(outputs)} wav files)")
     print("\nInterpretation:")
     print("  T ~ perfect -> keeping magnitude AND phase is losslessly invertible.")
-    print("  A high      -> even a biological gammatone bank is nearly invertible.")
-    print("  B << T      -> the T->B drop IS the phase / temporal fine structure.")
+    print("  A ~ perfect -> a tight gammatone frame is invertible too.")
+    print("  B << A      -> the A->B drop IS the phase / temporal fine structure.")
     print("  C <= B      -> the stochastic spike rate-code adds further, real loss.")
-    print("  C+ recovers -> most of the gap is the CARRIER, not the envelope:")
-    print("                 a cochlear implant transmits ~B; natural hearing keeps ~T.")
+    print("  C+          -> diagnostic: its carrier is borrowed, not decoded from spikes.")
+    print("  N ~ perfect -> exact spike TIMES carry the whole waveform; rerun with")
+    print("                 --jitter 1e-5 to see how timing noise erodes it.")
 
 
 if __name__ == '__main__':

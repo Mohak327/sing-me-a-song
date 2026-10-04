@@ -1,28 +1,34 @@
 **Sing Me A Song**
 
-1. Load and preprocess the audio input:
-    - Use librosa or scipy to load WAV files, downsample, normalize.
+A model of the human auditory periphery, built to answer one question: how much
+of a sound survives each stage of hearing, and can the sound be regenerated from
+the nerve signal alone?
 
-2. Simulate cochlear filtering:
-    - Design a bank of bandpass filters to extract multiple frequency channels.
-    - For each channel, generate cochlear basilar membrane motion analog.
+Run it:
 
-3. Model inner hair cell transduction:
-    - Apply nonlinear transfer functions simulating receptor potentials.
+    .\.venv\Scripts\python.exe recover.py [sound_file] [--seconds N]
 
-4. Simulate auditory nerve spiking:
-    - Drive a population of LIF or Hodgkin-Huxley neurons with processed signals.
-    - Monitor spike timings representing neuronal "voice encoding."
+`recover.py` pushes one clip through six reconstruction paths and scores each
+against the original (SNR, waveform correlation, envelope correlation, log
+spectral distance). Audio for every path is written to `output/`.
 
-5. Reconstruct or visualize neuronal output:
-    - Sum neural firing rates as neurograms or cochleograms.
-    - Optionally, perform reverse-transform to audio using vocoder principles.
+| Path | What it keeps | Result |
+|---|---|---|
+| T | STFT magnitude + phase | perfect (reference) |
+| A | tight gammatone frame, all bands | perfect |
+| B | band envelopes only, noise carrier | cochlear-implant quality |
+| C | spike firing rates -> envelopes | below B |
+| C+ | C with fine structure borrowed from analysis | diagnostic only |
+| N | exact spike times of a deterministic LIF population | perfect |
 
-6. Visualize intermediate signals:
-    - Plot spectrograms, cochlear responses, spike rasters for understanding.
+Path N is exact only for noise-free spike times. `--jitter 1e-5` adds 10
+microseconds of timing noise and shows how quickly fidelity falls.
 
-7. Audio Reconstruction
-    - Sum/envelope spike rates per channel, reconstruct with amplitude modulation per channel, superpose to reconstruct audio.
+Modules: `cochlea/gammatone_frame.py` (invertible filterbank),
+`neuron_models/spike_timing.py` (spike-time encoder),
+`reconstruction/decode_spike_times.py` (least-squares decoder). The older
+envelope/rate pipeline lives in `cochlea/filterbank.py`, `haircell/`,
+`neuron_models/neuron_population.py` and `reconstruction/vocoder.py`.
 
 -----
 
@@ -32,6 +38,7 @@
 ├── requirements.txt  
 ├── main_pipeline.ipynb           # Master Jupyter notebook: runs each step,  
 ├── config.py                     # Central config (params, file paths, etc)  
+├── recover.py                    # End-to-end driver: runs and scores all paths  
 ├── audio_io/  
 │   ├── __init__.py  
 │   ├── load_audio.py             # Load, downsample, normalize audio files  

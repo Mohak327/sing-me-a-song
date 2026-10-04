@@ -18,6 +18,10 @@ from haircell.transduction import apply_transduction
 from neuron_models.neuron_population import simulate_population_vectorized
 from reconstruction.vocoder import (transparent_reconstruct, coherent_reconstruct,
                                     vocoder_reconstruct, tfs_vocoder)
+from cochlea.gammatone_frame import gammatone_frame, analyze, synthesize
+from neuron_models.spike_timing import make_population, encode_spike_times
+from reconstruction.decode_spike_times import decode_spike_times
+import recover
 from audio_io.load_audio import load_audio
 import config
 
@@ -124,11 +128,25 @@ def test_outputs_are_finite_and_bounded():
         assert np.max(np.abs(y)) <= 1.0 + 1e-6, f"path {name} out of [-1,1]"
 
 
+def test_spike_timing_path_is_scored_as_near_perfect():
+    """Path N must beat 100 dB under recover.py's own SNR metric (alignment + gain fit)."""
+    x, fs = _make_signal(dur=0.25)
+    H, cfs = gammatone_frame(len(x), fs, num_channels=32)
+    bands = analyze(x, H)
+    assert recover.snr_db(x, synthesize(bands, H)) > 200
+    population = make_population(cfs, neurons_per_channel=16)
+    spike_neuron, spike_time = encode_spike_times(bands, fs, population)
+    y_n, _ = decode_spike_times(spike_neuron, spike_time, len(x), fs, H, population)
+    assert recover.snr_db(x, y_n) > 100
+    assert recover.PATH_N_NAME == 'pathN_spike_timing'
+
+
 if __name__ == "__main__":
     for fn in [test_load_audio_silence_no_nan,
                test_vectorized_lif_respects_refractory,
                test_coherent_beats_vocoder_on_waveform,
-               test_outputs_are_finite_and_bounded]:
+               test_outputs_are_finite_and_bounded,
+               test_spike_timing_path_is_scored_as_near_perfect]:
         fn()
         print(f"PASS  {fn.__name__}")
     print("All reconstruction tests passed.")
