@@ -1,0 +1,108 @@
+{
+ "stops": {
+  "sound": {
+   "position": [
+    -4.808,
+    -1.444,
+    -0.02
+   ],
+   "size": 4.0
+  },
+  "outer-ear": {
+   "position": [
+    -1.697,
+    -1.58,
+    -0.012
+   ],
+   "size": 3.647
+  },
+  "eardrum": {
+   "position": [
+    -0.4,
+    -1.551,
+    -0.17
+   ],
+   "size": 0.785
+  },
+  "bones": {
+   "position": [
+    -0.419,
+    -1.273,
+    -0.164
+   ],
+   "size": 0.755
+  },
+  "cochlea": {
+   "position": [
+    -0.148,
+    -1.261,
+    -0.383
+   ],
+   "size": 1.281
+  },
+  "hair-cells": {
+   "position": [
+    -0.148,
+    -1.261,
+    -0.383
+   ],
+   "size": 1.281
+  },
+  "nerve": {
+   "position": [
+    0.279,
+    -1.262,
+    -0.481
+   ],
+   "size": 1.21
+  },
+  "brainstem": {
+   "position": [
+    0.716,
+    -1.308,
+    -0.609
+   ],
+   "size": 2.4
+  },
+  "midbrain": {
+   "position": [
+    1.54,
+    -0.36,
+    -0.561
+   ],
+   "size": 1.6
+  },
+  "thalamus": {
+   "position": [
+    1.028,
+    -0.011,
+    -0.384
+   ],
+   "size": 1.6
+  },
+  "cortex": {
+   "position": [
+    -1.058,
+    0.828,
+    -1.103
+   ],
+   "size": 4.469
+  }
+ },
+ "ear_scale": 1.057,
+ "faces": {
+  "auditory_cortex": 2264,
+  "colliculus": 360,
+  "geniculate": 396,
+  "thalamus": 2460,
+  "cerebellum": 47700,
+  "brainstem": 46888,
+  "cortex": 104656,
+  "outer_ear": 1412,
+  "canal": 15996,
+  "eardrum": 7996,
+  "bones": 9992,
+  "cochlea": 36004,
+  "nerve": 16018
+ }
+}

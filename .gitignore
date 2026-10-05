@@ -1,2 +1,14 @@
 .venv
+node_modules
+dist
 __pycache__
+.pytest_cache
+.pytest_tmp
+.vercel
+.superpowers
+tools/.cache
+output/
+graphify-out/
+.graphify_python
+.claude/
+text.md
