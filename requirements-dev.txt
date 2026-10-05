@@ -1,0 +1,12 @@
+# Everything needed to work on this repository locally.
+numpy
+scipy
+fastapi
+librosa
+soundfile
+uvicorn
+httpx
+pytest
+trimesh
+remotezip
+pillow
